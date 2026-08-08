@@ -12,22 +12,56 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def download_casting_dataset(dest_dir: str | Path = "data/raw/casting") -> None:
-    """Download/extract the Casting Product Image Dataset.
+CASTING_KAGGLE_HANDLE = "ravirajsinh45/real-life-industrial-dataset-of-casting-product"
+CASTING_EXPECTED_MIN_FILES = 6000  # dataset has ~7,000 images; used as a download sanity check
 
-    NOTE: Kaggle datasets require API credentials (~/.kaggle/kaggle.json).
-    This function wraps the kaggle CLI; see docs/setup.md for credential setup.
+
+def download_casting_dataset(dest_dir: str | Path = "data/raw/casting") -> Path:
+    """Download the Casting Product Image Dataset via kagglehub and copy it into dest_dir.
+
+    Requires Kaggle API credentials at ~/.kaggle/kaggle.json (see docs/setup.md).
+    kagglehub caches the download outside the project (~/.cache/kagglehub) and
+    is idempotent — re-running this is safe and won't re-download if already cached.
 
     Args:
-        dest_dir: Destination directory for the raw dataset.
+        dest_dir: Destination directory to copy the dataset into (data/raw/casting).
+
+    Returns:
+        Path to dest_dir containing the dataset.
+
+    Raises:
+        RuntimeError: If the download completes but the file count looks wrong
+            (likely a partial/corrupt download) — fails loudly rather than
+            letting a bad download silently propagate into EDA/training.
     """
+    import shutil
+
+    import kagglehub
+
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("TODO: implement Kaggle API download for casting dataset -> %s", dest_dir)
-    raise NotImplementedError(
-        "Implement via kaggle API: "
-        "kaggle datasets download -d ravirajsinh45/real-life-industrial-dataset-of-casting-product"
-    )
+
+    logger.info("Downloading '%s' via kagglehub...", CASTING_KAGGLE_HANDLE)
+    cached_path = Path(kagglehub.dataset_download(CASTING_KAGGLE_HANDLE))
+    logger.info("kagglehub cached download at: %s", cached_path)
+
+    # kagglehub downloads to its own cache dir; copy into our project-local data/raw/
+    # so the rest of the pipeline (configs point at data/raw/casting) works unchanged.
+    if dest_dir.exists() and any(dest_dir.iterdir()):
+        logger.info("dest_dir already populated — skipping copy (idempotent)")
+    else:
+        shutil.copytree(cached_path, dest_dir, dirs_exist_ok=True)
+        logger.info("Copied dataset into project at %s", dest_dir)
+
+    if not verify_download_integrity(dest_dir, expected_min_files=CASTING_EXPECTED_MIN_FILES):
+        raise RuntimeError(
+            f"Download integrity check failed for {dest_dir} — expected at least "
+            f"{CASTING_EXPECTED_MIN_FILES} files. The download may be partial or corrupt. "
+            f"Try deleting {dest_dir} and re-running."
+        )
+
+    logger.info("Casting dataset ready at %s", dest_dir)
+    return dest_dir
 
 
 def download_mvtec_ad(dest_dir: str | Path = "data/raw/mvtec_ad") -> None:
