@@ -72,7 +72,7 @@ See `reports/literature_survey.md`. Do not include unverified citations.
 _(Informal tracking — remove before final submission)_
 
 - [x] Repository structure established
-- [ ] Casting dataset downloaded and validated
+- [x] Casting dataset downloaded and validated
 - [ ] Baseline training pipeline validated end-to-end
 - [ ] Label noise detection wired up (cleanlab cross-validation)
 - [ ] Active learning loop wired up (model inference in loop.py)
