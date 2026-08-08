@@ -17,13 +17,20 @@ learning loop (repeated retraining).
 
 ### Casting Product Image Dataset (Phase 1)
 
-Requires a Kaggle account and API token:
+Fully automated via `kagglehub`. Requires a Kaggle account and API token:
 1. Create an API token at https://www.kaggle.com/settings → "Create New Token"
-2. Place the downloaded `kaggle.json` at `~/.kaggle/kaggle.json`
+   (downloads a `kaggle.json` file)
+2. Place it at `~/.kaggle/kaggle.json`
+   - Windows: `C:\Users\<you>\.kaggle\kaggle.json`
 3. Run:
-   ```bash
+```bash
    python scripts/download_data.py --dataset casting
-   ```
+```
+
+This downloads (or reuses a cached copy from `~/.cache/kagglehub`), copies the
+dataset into `data/raw/casting/`, and verifies the file count looks complete —
+it will raise a clear error instead of silently proceeding if the download is
+partial or corrupted.
 
 ### MVTec Anomaly Detection (Phase 2)
 
