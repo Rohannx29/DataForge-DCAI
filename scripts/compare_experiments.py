@@ -6,6 +6,10 @@ Usage:
     python scripts/compare_experiments.py --experiment-name defect-dcai
 """
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.experiment.comparison import build_comparison_table, significance_test
 from src.utils.logger import get_logger

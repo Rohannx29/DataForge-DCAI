@@ -14,6 +14,10 @@ Usage:
         --base-config configs/base_config.yaml
 """
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from torch.utils.data import DataLoader
 from torchvision import transforms

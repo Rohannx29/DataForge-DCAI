@@ -6,6 +6,10 @@ Usage:
     python scripts/run_cleaning.py --config configs/dataset_casting.yaml
 """
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.cleaning import remove_corrupt_files, resolve_duplicates, save_cleaned_manifest
 from src.data.preprocessing import build_manifest_from_directory, stratified_split

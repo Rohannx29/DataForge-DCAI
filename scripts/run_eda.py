@@ -6,7 +6,10 @@ Usage:
     python scripts/run_eda.py --config configs/dataset_casting.yaml
 """
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.preprocessing import build_manifest_from_directory
 from src.labels.quality_audit import audit_label_distribution

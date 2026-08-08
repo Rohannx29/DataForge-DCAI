@@ -6,6 +6,10 @@ Usage:
     python scripts/run_validation.py --config configs/dataset_casting.yaml
 """
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.validation import find_duplicate_images, validate_image_integrity
 from src.utils.config import load_config

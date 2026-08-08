@@ -7,6 +7,12 @@ Usage:
     python scripts/download_data.py --dataset mvtec_ad
 """
 import argparse
+import sys
+from pathlib import Path
+
+# Ensure project root is on sys.path so `from src...` imports work
+# regardless of the directory this script is invoked from.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.acquisition import download_casting_dataset, download_mvtec_ad
 from src.utils.logger import get_logger

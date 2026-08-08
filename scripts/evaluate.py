@@ -6,6 +6,10 @@ Usage:
     python scripts/evaluate.py --manifest data/processed/casting/manifest_baseline.csv --checkpoint path/to/model.pt
 """
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
 from torch.utils.data import DataLoader
