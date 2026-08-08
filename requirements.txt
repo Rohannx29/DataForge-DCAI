@@ -12,6 +12,7 @@ scikit-learn>=1.4.0        # metrics, cross-validation splits
 modAL-python>=0.4.1        # active learning framework
 
 # --- Data handling ---
+kagglehub>=0.3.0           # dataset acquisition (Casting dataset) — see src/data/acquisition.py
 numpy>=1.26.0
 pandas>=2.2.0
 pillow>=10.2.0
