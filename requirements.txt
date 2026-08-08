@@ -1,0 +1,42 @@
+# --- Core ML / DL ---
+torch>=2.2.0
+torchvision>=0.17.0
+timm>=0.9.16              # pretrained backbones (ResNet18, EfficientNet-B0)
+
+# --- Data-Centric AI tooling ---
+cleanlab>=2.6.0            # confident-learning label noise detection
+albumentations>=1.4.0      # targeted / advanced augmentation
+scikit-learn>=1.4.0        # metrics, cross-validation splits
+
+# --- Active Learning ---
+modAL-python>=0.4.1        # active learning framework
+
+# --- Data handling ---
+numpy>=1.26.0
+pandas>=2.2.0
+pillow>=10.2.0
+opencv-python-headless>=4.9.0
+
+# --- Experiment tracking ---
+mlflow>=2.11.0
+wandb>=0.16.0               # optional, used interchangeably with mlflow
+
+# --- Explainability ---
+grad-cam>=1.5.0              # pytorch-grad-cam
+
+# --- Visualization ---
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.20.0
+
+# --- Config / CLI ---
+pyyaml>=6.0.1
+hydra-core>=1.3.2            # optional structured config management
+
+# --- Testing ---
+pytest>=8.0.0
+pytest-cov>=4.1.0
+
+# --- Utilities ---
+tqdm>=4.66.0
+python-dotenv>=1.0.1

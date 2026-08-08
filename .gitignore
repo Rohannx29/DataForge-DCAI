@@ -1,0 +1,56 @@
+# Data (never commit raw/processed data)
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+
+# Experiment outputs
+experiments/*
+!experiments/.gitkeep
+mlruns/
+wandb/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Model artifacts
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.onnx
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Environment / secrets
+.env
+.env.local
+
+# Reports build artifacts
+reports/*.pdf
+!reports/figures/.gitkeep
