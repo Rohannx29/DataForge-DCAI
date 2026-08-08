@@ -1,0 +1,32 @@
+# Model + training hyperparameters.
+# THIS FILE MUST NOT CHANGE BETWEEN EXPERIMENTAL CONDITIONS.
+# Only data/label/dcai configs are allowed to vary — this is the controlled variable
+# that lets performance differences be attributed to data quality.
+
+model:
+  architecture: "resnet18"           # options: resnet18, efficientnet_b0 (via timm)
+  pretrained: true
+  num_classes: 2
+  freeze_backbone: false
+  dropout: 0.3
+
+training:
+  epochs: 30
+  batch_size: 32
+  optimizer: "adamw"
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  lr_scheduler: "cosine"
+  early_stopping_patience: 5
+  mixed_precision: true               # torch.cuda.amp — helps on consumer GPUs
+
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "auroc"
+  primary_metric: "f1"                # used for early stopping / model selection
+                                        # NOT accuracy, due to class imbalance
+  n_runs: 5                            # repeat each condition 5x for confidence intervals

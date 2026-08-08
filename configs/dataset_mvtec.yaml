@@ -1,0 +1,27 @@
+# Phase 2 dataset: MVTec Anomaly Detection benchmark
+# Multi-category, includes pixel-level defect masks (used for future segmentation stretch goal).
+
+dataset:
+  name: "mvtec_ad"
+  task: "binary_classification"      # good vs. defective (per category); masks available for future segmentation work
+  raw_dir: "data/raw/mvtec_ad"
+  processed_dir: "data/processed/mvtec_ad"
+  image_size: [256, 256]
+  channels: 3
+  categories:                         # start with a subset; expand once pipeline is validated
+    - "bottle"
+    - "metal_nut"
+    - "screw"
+  class_imbalance_ratio: null
+
+split:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+  stratify: true
+
+active_learning:
+  seed_labeled_fraction: 0.10
+  query_batch_size: 30
+  n_rounds: 12
+  strategy: "uncertainty_sampling"

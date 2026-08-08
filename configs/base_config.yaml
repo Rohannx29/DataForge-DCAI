@@ -1,0 +1,32 @@
+# Global settings shared across all experiments.
+# Individual dataset/model configs inherit and override these values.
+
+project:
+  name: "defect-dcai"
+  seed: 42                     # Fixed seed for reproducibility across ALL experimental conditions
+  device: "cuda"                # falls back to "cpu" automatically if unavailable
+
+paths:
+  data_raw: "data/raw"
+  data_interim: "data/interim"
+  data_processed: "data/processed"
+  experiments_dir: "experiments"
+  reports_dir: "reports"
+
+experiment_tracking:
+  backend: "mlflow"             # options: mlflow, wandb
+  tracking_uri: "experiments/mlruns"
+  experiment_name: "defect-dcai"
+
+logging:
+  level: "INFO"
+  log_dir: "experiments/logs"
+
+# The four controlled experimental conditions this repo is designed to compare.
+# Model architecture and hyperparameters MUST remain identical across all conditions;
+# only data-layer parameters (referenced from data/label/dcai configs) should vary.
+conditions:
+  - baseline
+  - cleaned
+  - noise_corrected
+  - dcai_improved

@@ -1,0 +1,20 @@
+# Active learning specific configuration — kept separate so sampling strategy
+# experiments don't require touching model or dataset configs.
+
+sampling_strategies:
+  uncertainty_sampling:
+    method: "entropy"                 # options: entropy, least_confidence, margin
+  diversity_sampling:
+    method: "kmeans_embedding"
+    n_clusters: 20
+  hybrid:
+    uncertainty_weight: 0.7
+    diversity_weight: 0.3
+
+oracle:
+  type: "simulated"                   # uses existing ground-truth labels to mimic a human annotator
+  label_noise_injection: 0.0          # fraction of "oracle" labels deliberately corrupted, for noise-robustness experiments
+
+stopping_criteria:
+  max_rounds: 12
+  target_labeled_fraction: 0.60       # stop once 60% of pool has been labeled

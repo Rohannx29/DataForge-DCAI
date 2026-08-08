@@ -1,0 +1,26 @@
+# Phase 1 dataset: Casting Product Image Dataset (binary defect classification)
+# Used to validate the end-to-end pipeline before scaling to MVTec AD.
+
+dataset:
+  name: "casting"
+  task: "binary_classification"     # defective vs. ok
+  raw_dir: "data/raw/casting"
+  processed_dir: "data/processed/casting"
+  image_size: [224, 224]
+  channels: 1                        # grayscale casting images
+  classes:
+    - "ok_front"
+    - "def_front"
+  class_imbalance_ratio: null        # populated by run_eda.py after inspection
+
+split:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+  stratify: true                     # preserve class ratio across splits
+
+active_learning:
+  seed_labeled_fraction: 0.10        # start with only 10% labeled
+  query_batch_size: 50
+  n_rounds: 10
+  strategy: "uncertainty_sampling"   # options: uncertainty_sampling, diversity_sampling, hybrid
