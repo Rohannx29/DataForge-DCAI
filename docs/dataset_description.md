@@ -53,30 +53,44 @@
 
 ## Label Quality Notes
 
-Since Casting's real labels appear near-perfectly clean (consistent with the
-ceiling-effect baseline result above), there is no meaningful REAL label
-noise to detect on this dataset. Instead, the noise-detection pipeline
-(`cleanlab`-based confident learning, `src/labels/noise_detection.py`) was
-validated using **synthetic label noise** injected at a known rate:
+### Synthetic Noise Detection Validation
+[unchanged from before — precision=0.899, recall=0.889]
 
-- **Method:** 10% of training labels (90 / 909) deliberately corrupted via
-  `inject_synthetic_label_noise()`; 5-fold cross-validation used to obtain
-  out-of-sample predicted probabilities (`get_out_of_sample_predictions()`);
-  `cleanlab.filter.find_label_issues()` used to flag likely-noisy samples.
-- **Result:** 89 samples flagged as likely mislabeled.
-  - True Positives: 80 (correctly identified injected noise)
-  - False Positives: 9 (real labels incorrectly flagged)
-  - False Negatives: 10 (injected noise missed)
-  - **Precision: 0.899, Recall: 0.889**
-- **Interpretation:** The noise-detection pipeline correctly identifies
-  ~89% of deliberately injected label errors with ~90% precision, validating
-  that `cleanlab`-based confident learning is correctly wired into this
-  project's k-fold cross-validation pipeline ahead of applying it to MVTec
-  AD's real (uninjected) label noise in Phase 2, where actual noisy labels
-  are expected.
-- **Known implementation note:** `cleanlab.filter.find_label_issues()` is
-  forced to `n_jobs=1` (single-process) rather than its multiprocessing
-  default, due to a Windows + Python 3.12 + `torch._dynamo` compatibility
-  bug where subprocess re-imports of `torch` trigger a `MemoryError` via a
-  runaway `inspect.signature()` recursion. This is a platform-specific
-  workaround, not a change to the underlying detection methodology.
+### Real Label Correction — Effect on Downstream Performance
+
+Applying `cleanlab`-based noise correction to Casting's real (non-synthetic)
+labels removed <N> training samples (<X.XX>% of the 909-sample training set)
+flagged as likely mislabeled. Downstream 5-run comparison against the
+uncorrected baseline:
+
+| Condition | Test F1 (mean ± std) | 95% CI |
+|---|---|---|
+| baseline | 0.9974 ± 0.0023 | [0.9946, 1.0003] |
+| cleaned | 0.9974 ± 0.0023 | [0.9946, 1.0003] |
+| noise_corrected | 0.9923 ± 0.0019 | [0.9899, 0.9947] |
+
+An independent-samples t-test (baseline vs. noise_corrected, n=5 each)
+confirms this difference is statistically significant: t=3.803, p=0.0052.
+
+**Interpretation:** Noise correction produced a statistically significant
+*decrease* in test performance on this dataset. Since baseline already
+achieves near-ceiling performance (0.997 test F1), Casting's real labels
+contain very little genuine noise for `cleanlab` to correctly identify.
+Under these conditions, the detector's false positives (correctly-labeled
+samples incorrectly flagged and removed — measured at 9/89, ~10% FP rate,
+in the synthetic noise validation above) dominate its impact: removing valid
+training data shrinks an already-small training set (909 samples) with no
+compensating noise-reduction benefit. This demonstrates that label-noise
+correction is not universally beneficial — its value is contingent on the
+actual noise rate present in the source data, motivating close attention to
+this dynamic when the same pipeline is applied to MVTec AD in Phase 2, where
+the true noise rate is unknown and may differ substantially.
+
+**baseline vs. cleaned are bit-identical** (mean, std, CI all match exactly)
+— expected, not a bug: `manifest_cleaned.csv` is byte-identical to
+`manifest_baseline.csv` for this dataset (0 corrupt files, 0 duplicates
+found within the correctly-scoped raw directory — see Data quality findings
+above), and both conditions share the same seed sequence with deterministic
+cuDNN settings enabled (`src/utils/seed.py`), producing bit-reproducible
+results. This will not hold for MVTec AD, where cleaning is expected to
+meaningfully alter the dataset.
