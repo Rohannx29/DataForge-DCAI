@@ -38,16 +38,18 @@
 ## Baseline Model Performance — Ceiling Effect
 
 - **Architecture:** ResNet18, pretrained, fine-tuned (see `configs/model_config.yaml`)
-- **Test set (196 held-out images, never used for model selection):**
-  accuracy = 1.0, precision = 1.0, recall = 1.0, F1 = 1.0, AUROC = 1.0
+- **Test set (196 held-out images, never used for model selection), 5 independent runs with varied seeds:**
+  test_f1 mean = 0.9974, std = 0.0023, min = 0.9957, max = 1.0000
 - **Interpretation:** Casting Product is a well-documented "easy" benchmark;
-  public baselines commonly report 98–100% with simple CNNs. A perfect
-  baseline score means **no headroom exists** on this dataset to demonstrate
-  gains from data-quality interventions (cleaned / noise_corrected /
-  dcai_improved conditions cannot exceed a perfect score). This confirms the
-  pipeline is functioning correctly end-to-end but is the direct motivation
-  for treating Casting as Phase 1 (pipeline validation only) and MVTec AD as
-  Phase 2 (primary experimental comparison), per the original project plan.
+  public baselines commonly report 98–100% with simple CNNs. Multi-run
+  averaging (5 seeds) confirms this is a near-ceiling result — not a fluke
+  of a single training run — with negligible variance (std = 0.0023). This
+  leaves effectively no headroom to demonstrate gains from data-quality
+  interventions (cleaned / noise_corrected / dcai_improved conditions cannot
+  meaningfully exceed a near-perfect score). This confirms the pipeline is
+  functioning correctly end-to-end and is the direct motivation for treating
+  Casting as Phase 1 (pipeline validation only) and MVTec AD as Phase 2
+  (primary experimental comparison), per the original project plan.
 
 ## Label Quality Notes
 
