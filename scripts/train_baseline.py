@@ -9,10 +9,18 @@ run — the --manifest and --condition arguments determine what data is used
 and how each run is tagged; model architecture/hyperparameters never change
 across conditions (see docs/architecture.md).
 
+IMPORTANT: --dataset is REQUIRED and determines the MLflow experiment name
+(e.g. "defect-dcai-casting" vs "defect-dcai-mvtec_ad"). Without this, runs
+from different datasets land in the same experiment under the same
+condition tag with no way to distinguish them — this bug was caught and
+fixed after Casting and MVTec baseline runs were found mixed together in
+a shared "defect-dcai" / "baseline" bucket.
+
 Usage:
     python scripts/train_baseline.py \
-        --manifest data/processed/casting/manifest_baseline.csv \
+        --manifest data/processed/mvtec_ad/manifest_baseline.csv \
         --condition baseline \
+        --dataset mvtec_ad \
         --model-config configs/model_config.yaml \
         --base-config configs/base_config.yaml
 """
@@ -44,6 +52,7 @@ def run_single_training(
     run_seed: int,
     manifest_path: str,
     condition: str,
+    experiment_name: str,
     config: dict,
     checkpoint_dir: Path,
     transform,
@@ -55,6 +64,9 @@ def run_single_training(
         run_seed: Seed for THIS run's model initialization (base_seed + run_idx).
         manifest_path: Path to the condition's manifest CSV.
         condition: One of baseline/cleaned/noise_corrected/dcai_improved.
+        experiment_name: MLflow experiment name, INCLUDES the dataset name
+            (e.g. "defect-dcai-mvtec_ad") so runs from different datasets
+            never share an experiment/condition bucket.
         config: Merged base_config + model_config.
         checkpoint_dir: Directory to save this run's model weights.
         transform: torchvision transform pipeline (shared across runs).
@@ -80,7 +92,7 @@ def run_single_training(
         dropout=config["model"]["dropout"],
     )
 
-    with track_run(config["experiment_tracking"]["experiment_name"], condition=condition, run_name=f"{condition}_run{run_idx}"):
+    with track_run(experiment_name, condition=condition, run_name=f"{condition}_run{run_idx}"):
         log_params({
             "condition": condition,
             "run_index": run_idx,
@@ -114,9 +126,9 @@ def run_single_training(
         log_metrics(all_metrics)
 
         logger.info(
-            "[%s run %d/%d, seed=%d] val_f1=%.4f | test_f1=%.4f | test_auroc=%.4f",
+            "[%s run %d/%d, seed=%d] val_f1=%.4f | test_f1=%.4f | test_precision=%.4f | test_recall=%.4f | test_auroc=%.4f",
             condition, run_idx + 1, config["evaluation"]["n_runs"], run_seed,
-            val_metrics["f1"], test_metrics["f1"], test_metrics["auroc"],
+            val_metrics["f1"], test_metrics["f1"], test_metrics["precision"], test_metrics["recall"], test_metrics["auroc"],
         )
 
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -130,9 +142,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train a model for one experimental condition, n_runs times")
     parser.add_argument("--manifest", required=True, help="Path to the manifest CSV for this condition")
     parser.add_argument("--condition", required=True, choices=["baseline", "cleaned", "noise_corrected", "dcai_improved"])
+    parser.add_argument("--dataset", required=True, help="Dataset name (e.g. 'casting', 'mvtec_ad') — determines MLflow experiment name, keeps datasets from mixing")
     parser.add_argument("--model-config", default="configs/model_config.yaml")
     parser.add_argument("--base-config", default="configs/base_config.yaml")
-    parser.add_argument("--checkpoint-dir", default="experiments/checkpoints", help="Where to save trained model weights")
+    parser.add_argument("--checkpoint-dir", default=None, help="Where to save trained model weights (default: experiments/checkpoints/<dataset>/)")
     parser.add_argument("--n-runs", type=int, default=None, help="Override evaluation.n_runs from config")
     args = parser.parse_args()
 
@@ -142,7 +155,12 @@ def main() -> None:
 
     n_runs = args.n_runs if args.n_runs is not None else config["evaluation"]["n_runs"]
     base_seed = config["project"]["seed"]
-    checkpoint_dir = Path(args.checkpoint_dir)
+
+    # Per-dataset experiment name — the actual fix. Never share an experiment
+    # across datasets, or condition-tagged runs become indistinguishable.
+    experiment_name = f"{config['experiment_tracking']['experiment_name']}-{args.dataset}"
+
+    checkpoint_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else Path("experiments/checkpoints") / args.dataset
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -150,7 +168,10 @@ def main() -> None:
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    logger.info("Starting %d training runs for condition '%s' (base_seed=%d)", n_runs, args.condition, base_seed)
+    logger.info(
+        "Starting %d training runs for condition '%s' on dataset '%s' (experiment='%s', base_seed=%d)",
+        n_runs, args.condition, args.dataset, experiment_name, base_seed,
+    )
 
     all_run_metrics = []
     for run_idx in range(n_runs):
@@ -160,6 +181,7 @@ def main() -> None:
             run_seed=run_seed,
             manifest_path=args.manifest,
             condition=args.condition,
+            experiment_name=experiment_name,
             config=config,
             checkpoint_dir=checkpoint_dir,
             transform=transform,
@@ -168,12 +190,14 @@ def main() -> None:
 
     test_f1_values = [m["test_f1"] for m in all_run_metrics]
     logger.info(
-        "[%s] Completed %d runs | test_f1 mean=%.4f std=%.4f min=%.4f max=%.4f",
-        args.condition, n_runs, np.mean(test_f1_values), np.std(test_f1_values, ddof=1) if n_runs > 1 else 0.0,
+        "[%s/%s] Completed %d runs | test_f1 mean=%.4f std=%.4f min=%.4f max=%.4f",
+        args.dataset, args.condition, n_runs, np.mean(test_f1_values),
+        np.std(test_f1_values, ddof=1) if n_runs > 1 else 0.0,
         np.min(test_f1_values), np.max(test_f1_values),
     )
     logger.info(
-        "Next: run `python scripts/compare_experiments.py` once all conditions have %d+ runs logged.", n_runs
+        "Next: run `python scripts/compare_experiments.py --dataset %s` once all conditions have %d+ runs logged.",
+        args.dataset, n_runs,
     )
 
 
