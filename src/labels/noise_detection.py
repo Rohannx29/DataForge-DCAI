@@ -34,6 +34,7 @@ def detect_label_issues(
     labels: np.ndarray,
     pred_probs: np.ndarray,
     return_indices_ranked_by: str = "self_confidence",
+    n_jobs: int = 1,
 ) -> np.ndarray:
     """Identify indices of likely mislabeled samples using confident learning.
 
@@ -44,6 +45,12 @@ def detect_label_issues(
             using in-sample probabilities will bias results).
         return_indices_ranked_by: Ranking method for returned issue indices.
             Options: "self_confidence", "normalized_margin", "confidence_weighted_entropy".
+        n_jobs: Number of parallel processes cleanlab uses internally.
+            FORCED TO 1 by default — cleanlab's multiprocessing triggers a
+            known Windows + Python 3.12 + torch._dynamo import bug (subprocess
+            re-imports of torch cause a runaway inspect.signature() recursion,
+            manifesting as MemoryError). Single-process is slightly slower but
+            stable on Windows. Safe to raise on Linux/Mac if needed.
 
     Returns:
         Array of sample indices (positional, into the arrays passed in) flagged
@@ -53,6 +60,7 @@ def detect_label_issues(
         labels=labels,
         pred_probs=pred_probs,
         return_indices_ranked_by=return_indices_ranked_by,
+        n_jobs=n_jobs,
     )
     logger.info(
         "Flagged %d / %d samples (%.2f%%) as likely label issues",

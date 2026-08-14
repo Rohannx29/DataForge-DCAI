@@ -24,8 +24,7 @@
   MAJORITY class, and the imbalance is mild (1.5:1) rather than severe. This
   makes Casting well-suited as a **pipeline validation dataset** (Phase 1)
   but not representative of realistic production-line imbalance — that
-  characteristic is expected to show up more strongly in MVTec AD (Phase 2),
-  where each category is evaluated independently and defect rates vary.
+  characteristic is expected to show up more strongly in MVTec AD (Phase 2).
 - **Image properties:** grayscale, 512×512 source resolution, resized to
   224×224 for model input
 - **Data quality findings (via this repo's validation pipeline):**
@@ -36,25 +35,46 @@
     `casting_512x512/` and `casting_data/`, not genuine within-dataset
     duplicates; resolved by scoping `raw_dir` to a single copy)
 
-## MVTec Anomaly Detection
+## Baseline Model Performance — Ceiling Effect
 
-- **Source:** [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad)
-- **Task:** Binary classification (good / defective) per object category; pixel-level
-  defect masks available for future segmentation work
-- **Categories used:** bottle, metal_nut, screw (see `configs/dataset_mvtec.yaml`)
-- **Total samples per category:** TODO (populate after Phase 2 download)
-- **Class distribution:** TODO — MVTec AD training sets contain ONLY "good"
-  samples by design (anomaly detection setup); defective samples appear only
-  in the test split. **This has methodology implications** — document how
-  this project adapts MVTec AD's original anomaly-detection framing into the
-  supervised classification setup used here (likely requires re-splitting
-  test-set defective images into train/val/test rather than using the
-  original AD splits directly).
-- **Known limitations:** TODO
+- **Architecture:** ResNet18, pretrained, fine-tuned (see `configs/model_config.yaml`)
+- **Test set (196 held-out images, never used for model selection):**
+  accuracy = 1.0, precision = 1.0, recall = 1.0, F1 = 1.0, AUROC = 1.0
+- **Interpretation:** Casting Product is a well-documented "easy" benchmark;
+  public baselines commonly report 98–100% with simple CNNs. A perfect
+  baseline score means **no headroom exists** on this dataset to demonstrate
+  gains from data-quality interventions (cleaned / noise_corrected /
+  dcai_improved conditions cannot exceed a perfect score). This confirms the
+  pipeline is functioning correctly end-to-end but is the direct motivation
+  for treating Casting as Phase 1 (pipeline validation only) and MVTec AD as
+  Phase 2 (primary experimental comparison), per the original project plan.
 
 ## Label Quality Notes
 
-_After running `scripts/run_label_audit.py`, document here:_
-- Number/percentage of samples flagged by `cleanlab`
-- Manual review findings for a sample of flagged images (was the flag correct?)
-- Any inter-annotator agreement statistics if a re-labeling audit was performed
+Since Casting's real labels appear near-perfectly clean (consistent with the
+ceiling-effect baseline result above), there is no meaningful REAL label
+noise to detect on this dataset. Instead, the noise-detection pipeline
+(`cleanlab`-based confident learning, `src/labels/noise_detection.py`) was
+validated using **synthetic label noise** injected at a known rate:
+
+- **Method:** 10% of training labels (90 / 909) deliberately corrupted via
+  `inject_synthetic_label_noise()`; 5-fold cross-validation used to obtain
+  out-of-sample predicted probabilities (`get_out_of_sample_predictions()`);
+  `cleanlab.filter.find_label_issues()` used to flag likely-noisy samples.
+- **Result:** 89 samples flagged as likely mislabeled.
+  - True Positives: 80 (correctly identified injected noise)
+  - False Positives: 9 (real labels incorrectly flagged)
+  - False Negatives: 10 (injected noise missed)
+  - **Precision: 0.899, Recall: 0.889**
+- **Interpretation:** The noise-detection pipeline correctly identifies
+  ~89% of deliberately injected label errors with ~90% precision, validating
+  that `cleanlab`-based confident learning is correctly wired into this
+  project's k-fold cross-validation pipeline ahead of applying it to MVTec
+  AD's real (uninjected) label noise in Phase 2, where actual noisy labels
+  are expected.
+- **Known implementation note:** `cleanlab.filter.find_label_issues()` is
+  forced to `n_jobs=1` (single-process) rather than its multiprocessing
+  default, due to a Windows + Python 3.12 + `torch._dynamo` compatibility
+  bug where subprocess re-imports of `torch` trigger a `MemoryError` via a
+  runaway `inspect.signature()` recursion. This is a platform-specific
+  workaround, not a change to the underlying detection methodology.
