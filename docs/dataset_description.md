@@ -23,96 +23,125 @@
   rates (often <5% defective), this dataset's defective class is the
   MAJORITY class, and the imbalance is mild (1.5:1) rather than severe. This
   makes Casting well-suited as a **pipeline validation dataset** (Phase 1)
-  but not representative of realistic production-line imbalance — that
-  characteristic is expected to show up more strongly in MVTec AD (Phase 2).
+  but not representative of realistic production-line imbalance.
 - **Image properties:** grayscale, 512×512 source resolution, resized to
   224×224 for model input
-- **Data quality findings (via this repo's validation pipeline):**
+- **Data quality findings:**
   - 0 corrupt/unreadable files (out of 1,300)
   - 0 duplicate groups within the correctly-scoped `casting_512x512/` copy
-    (an earlier validation run scoped to the full `data/raw/casting/` tree
-    found 64 duplicate groups — these were cross-copy duplicates between
-    `casting_512x512/` and `casting_data/`, not genuine within-dataset
-    duplicates; resolved by scoping `raw_dir` to a single copy)
+    (64 duplicate groups originally found were cross-copy duplicates between
+    `casting_512x512/` and `casting_data/`, resolved by scoping `raw_dir`)
 
-## Baseline Model Performance — Ceiling Effect
+## Baseline Model Performance — Ceiling Effect (Casting)
 
-- **Architecture:** ResNet18, pretrained, fine-tuned (see `configs/model_config.yaml`)
-- **Test set (196 held-out images, never used for model selection), 5 independent runs with varied seeds:**
+- **Architecture:** ResNet18, pretrained, fine-tuned
+- **Test set (196 held-out images), 5 independent runs with varied seeds:**
   test_f1 mean = 0.9974, std = 0.0023, min = 0.9957, max = 1.0000
-- **Interpretation:** Casting Product is a well-documented "easy" benchmark;
-  public baselines commonly report 98–100% with simple CNNs. Multi-run
-  averaging (5 seeds) confirms this is a near-ceiling result — not a fluke
-  of a single training run — with negligible variance (std = 0.0023). This
-  leaves effectively no headroom to demonstrate gains from data-quality
-  interventions (cleaned / noise_corrected / dcai_improved conditions cannot
-  meaningfully exceed a near-perfect score). This confirms the pipeline is
-  functioning correctly end-to-end and is the direct motivation for treating
-  Casting as Phase 1 (pipeline validation only) and MVTec AD as Phase 2
-  (primary experimental comparison), per the original project plan.
+- **Interpretation:** Near-ceiling performance with negligible variance
+  across seeds. Leaves no meaningful headroom to demonstrate data-quality
+  intervention gains, confirming Casting's role as Phase 1 (pipeline
+  validation) rather than the primary experimental dataset.
 
-## Label Quality Notes
+## Label Quality Notes (Casting)
 
 ### Synthetic Noise Detection Validation
 
-Since Casting's real labels appear near-perfectly clean (consistent with the
-ceiling-effect baseline result above), there is no meaningful REAL label
-noise to detect on this dataset. The noise-detection pipeline (`cleanlab`-based
-confident learning, `src/labels/noise_detection.py`) was instead validated
-using **synthetic label noise** injected at a known rate:
-
-- **Method:** 10% of training labels (90 / 909) deliberately corrupted;
-  5-fold cross-validation used to obtain out-of-sample predicted
-  probabilities; `cleanlab.filter.find_label_issues()` used to flag
-  likely-noisy samples.
-- **Result:** 89 samples flagged. TP=80, FP=9, FN=10. Precision=0.899,
-  Recall=0.889.
-- **Interpretation:** The detector correctly identifies ~89% of deliberately
-  injected label errors with ~90% precision — the noise-detection machinery
-  is correctly wired and functioning ahead of Phase 2 (MVTec AD).
+Since Casting's real labels appear near-perfectly clean, the noise-detection
+pipeline (`cleanlab`-based confident learning) was validated using
+**synthetic label noise** injected at a known rate: 10% of training labels
+(90 / 909) deliberately corrupted; 5-fold cross-validation used for
+out-of-sample predictions. Result: 89 samples flagged, TP=80, FP=9, FN=10,
+**precision=0.899, recall=0.889** — confirming the detection machinery is
+correctly wired ahead of MVTec AD.
 
 ### Real Label Correction — Effect on Downstream Performance
 
-Applying `cleanlab`-based correction to Casting's REAL (non-synthetic)
-labels flagged and removed **1 training sample out of 909 (0.11%)** —
-consistent with the dataset's near-ceiling baseline performance, indicating
-almost no genuine label noise is present.
-
-5-run comparison (test F1, mean ± std, 95% CI):
+Applying correction to Casting's REAL labels flagged and removed **1
+training sample out of 909 (0.11%)**. 5-run comparison:
 
 | Condition | Test F1 | 95% CI |
 |---|---|---|
 | baseline | 0.9974 ± 0.0023 | [0.9946, 1.0003] |
 | noise_corrected | 0.9923 ± 0.0019 | [0.9899, 0.9947] |
 
-Independent-samples t-test: t=3.803, **p=0.0052** (statistically significant
-at α=0.05).
+t-test: t=3.803, **p=0.0052** (significant) — but NOT interpretable as a real
+capability difference. Only 0.11% of data was removed; the measured Δ
+(0.0051 F1) corresponds to roughly one additional misclassified image out of
+196 test samples — within the coarsest unit F1 can resolve at this test set
+size. Two compounding factors: (1) **metric quantization** — near-ceiling F1
+on 196 samples has few discrete values; (2) **training-loader stochasticity**
+— `DataLoader(shuffle=True)` produces a different shuffle/batch composition
+when dataset length changes (909→908), even under a fixed seed. **Practical
+conclusion:** significance tests on near-ceiling metrics with small test
+sets can reflect training stochasticity rather than a real data-quality
+effect — a methodological caution carried into the MVTec AD analysis below,
+where categories are not expected to be at ceiling.
 
-**Interpretation — read carefully, this is a methodological caution, not a
-capability claim:** despite reaching statistical significance across 5 seeds,
-this result should NOT be read as "noise correction hurt the model." Only
-0.11% of training data was removed — far too little to plausibly cause a
-real capability difference in a fine-tuned ResNet18. The measured Δ (0.0051
-F1) corresponds to roughly **one additional misclassified image, on average,
-out of 196 test images** — i.e., the entire "effect" is within the coarsest
-unit the metric can resolve. Two compounding factors explain the significant-
-but-spurious result:
+---
 
-1. **Metric quantization:** with only 196 test samples, F1 near ceiling can
-   only take a small number of discrete values; a difference of "1 image on
-   average" is close to the smallest measurable unit, so t-tests on such
-   metrics are unusually sensitive to noise even when seeds are fixed.
-2. **Training-loader stochasticity:** `DataLoader(shuffle=True)` generates a
-   shuffle permutation dependent on the CURRENT dataset length. Removing 1
-   sample (909→908) changes the shuffle/batch composition for the entire
-   training run, producing a genuinely different training trajectory from
-   the same seed — not "identical training minus one example."
+## MVTec Anomaly Detection
 
-**Practical conclusion:** on near-ceiling tasks with small test sets,
-statistically-significant results from n=5 seeded runs can arise from
-training/data-loader stochasticity rather than a real, causally meaningful
-effect of the data intervention being tested. This motivates two things
-going forward: (a) treating significance tests on Casting as inconclusive
-by design, given the ceiling effect, and (b) expecting more trustworthy,
-larger-effect-size comparisons on MVTec AD (Phase 2), where categories are
-not expected to be at ceiling and test sets may allow finer metric resolution.
+- **Source:** [MVTec AD](https://www.mvtec.com/company/research/datasets/mvtec-ad)
+- **Task:** Binary classification (good / defective) per object category
+- **Categories used:** bottle, metal_nut, screw
+- **Methodology adaptation (important):** MVTec AD's official directory
+  structure is designed for *unsupervised anomaly detection* — `train/`
+  contains ONLY "good" images; all defective images live under
+  `test/<defect_type>/`, split across multiple named defect subtypes per
+  category (e.g. bottle: `broken_large`, `broken_small`, `contamination`).
+  This project POOLS `train/good/` + `test/good/` + all `test/<defect_type>/`
+  images per category into a single binary-labeled manifest, then applies
+  this repo's own `stratified_split_per_category()` (see
+  `src/data/mvtec_preprocessing.py`) to build a genuine, reproducible
+  train/val/test classification split — independently within each category,
+  so no single category dominates any split. This is a deliberate departure
+  from MVTec AD's original anomaly-detection benchmark protocol, made
+  explicit here since it affects how results should be compared against
+  published MVTec AD anomaly-detection baselines (they are NOT directly
+  comparable — different task setup).
+- **Total samples:** 1,107 across 3 categories (0 corrupt/unreadable,
+  verified against the manifest directly)
+- **Class distribution (pooled):**
+  | Class | Label | Count |
+  |---|---|---|
+  | good | 0 | 832 |
+  | defective | 1 | 275 |
+  - **Imbalance ratio: 3.03** (majority:minority)
+- **Class distribution (per category):**
+  | Category | Good | Defective | Imbalance Ratio |
+  |---|---|---|---|
+  | bottle | 229 | 63 | 3.63 |
+  | metal_nut | 242 | 93 | 2.60 |
+  | screw | 361 | 119 | 3.03 |
+- **Defect type diversity (defective samples only):**
+  | Category | Defect Types | Samples per Type |
+  |---|---|---|
+  | bottle | broken_large, broken_small, contamination | 20, 22, 21 |
+  | metal_nut | bent, color, flip, scratch | 25, 22, 23, 23 |
+  | screw | manipulated_front, scratch_head, scratch_neck, thread_side, thread_top | 24, 24, 25, 23, 23 |
+- **Split sizes (per category, ~70/15/15):**
+  | Category | Train | Val | Test |
+  |---|---|---|---|
+  | bottle | 204 | 44 | 44 |
+  | metal_nut | 234 | 50 | 51 |
+  | screw | 336 | 72 | 72 |
+- **Contrast with Casting (critical for report narrative):** Casting had
+  defective as the MAJORITY class at a mild 1.50:1 ratio; MVTec AD has
+  defective as the genuine MINORITY class at 3.03:1 pooled (up to 3.63:1 for
+  bottle) — far closer to realistic manufacturing defect rates, and the
+  dataset this project's class-balance and targeted-augmentation modules
+  (`src/dcai/class_balance.py`, `src/dcai/augmentation.py`) are designed to
+  address. This is the direct motivation for scoping MVTec AD as the primary
+  experimental comparison (Phase 2), with Casting serving only as pipeline
+  validation (Phase 1).
+- **Image properties:** varies by category (bottle/metal_nut RGB, screw
+  grayscale in source), all converted to RGB and resized to 224×224 for
+  model input (see `src/data/dataset.py::DefectDataset`)
+
+## Label Quality Notes (MVTec AD)
+
+_To be populated after running the noise-detection pipeline on this dataset
+(Phase 2) — expect this to be more informative than Casting's near-zero
+finding, since MVTec AD's real defect labels were assigned by domain experts
+following a documented protocol rather than the Casting dataset's uncertain
+labeling provenance._
