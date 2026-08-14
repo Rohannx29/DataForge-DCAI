@@ -1,17 +1,40 @@
 # Dataset Description
 
-_Populate this file with actual statistics after running `scripts/run_eda.py`
-on each dataset — this becomes the "Dataset Description" section of the final
-report. Placeholder structure below._
-
 ## Casting Product Image Dataset
 
-- **Source:** [Kaggle — Real-life Industrial Dataset of Casting Product](TODO: add URL)
+- **Source:** Kaggle — Real-life Industrial Dataset of Casting Product
+  (`ravirajsinh45/real-life-industrial-dataset-of-casting-product`)
 - **Task:** Binary classification (defective / ok) of submersible pump impeller castings
-- **Total samples:** TODO (run `scripts/run_eda.py`)
-- **Class distribution:** TODO
-- **Image properties:** grayscale, TODO resolution
-- **Known limitations:** TODO (document after EDA — e.g. lighting consistency, camera angle variation)
+- **Archive structure note:** The Kaggle download contains TWO copies of the
+  dataset — a flat, unsplit `casting_512x512/` directory and a pre-split
+  `casting_data/{train,test}/` directory. This project uses ONLY the flat
+  `casting_512x512/casting_512x512/` copy, so that train/val/test splitting
+  is fully controlled by this repo's own `stratified_split()` (fixed seed,
+  reproducible) rather than inheriting the dataset author's pre-made split.
+  See `configs/dataset_casting.yaml` for the exact path.
+- **Total samples used:** 1,300 (from the flat, unsplit copy)
+- **Class distribution:**
+  | Class | Label | Count |
+  |---|---|---|
+  | def_front (defective) | 1 | 781 |
+  | ok_front (normal) | 0 | 519 |
+- **Class imbalance ratio:** 1.50 (majority:minority)
+- **Notable characteristic:** Unlike typical real-world manufacturing defect
+  rates (often <5% defective), this dataset's defective class is the
+  MAJORITY class, and the imbalance is mild (1.5:1) rather than severe. This
+  makes Casting well-suited as a **pipeline validation dataset** (Phase 1)
+  but not representative of realistic production-line imbalance — that
+  characteristic is expected to show up more strongly in MVTec AD (Phase 2),
+  where each category is evaluated independently and defect rates vary.
+- **Image properties:** grayscale, 512×512 source resolution, resized to
+  224×224 for model input
+- **Data quality findings (via this repo's validation pipeline):**
+  - 0 corrupt/unreadable files (out of 1,300)
+  - 0 duplicate groups within the correctly-scoped `casting_512x512/` copy
+    (an earlier validation run scoped to the full `data/raw/casting/` tree
+    found 64 duplicate groups — these were cross-copy duplicates between
+    `casting_512x512/` and `casting_data/`, not genuine within-dataset
+    duplicates; resolved by scoping `raw_dir` to a single copy)
 
 ## MVTec Anomaly Detection
 
@@ -19,13 +42,14 @@ report. Placeholder structure below._
 - **Task:** Binary classification (good / defective) per object category; pixel-level
   defect masks available for future segmentation work
 - **Categories used:** bottle, metal_nut, screw (see `configs/dataset_mvtec.yaml`)
-- **Total samples per category:** TODO
-- **Class distribution:** TODO — MVTec AD training sets contain ONLY "good" samples
-  by design (anomaly detection setup); defective samples appear only in the test
-  split. **This has methodology implications** — document how this project adapts
-  MVTec AD's original anomaly-detection framing into the supervised classification
-  setup used here (likely requires re-splitting test-set defective images into
-  train/val/test rather than using the original AD splits directly).
+- **Total samples per category:** TODO (populate after Phase 2 download)
+- **Class distribution:** TODO — MVTec AD training sets contain ONLY "good"
+  samples by design (anomaly detection setup); defective samples appear only
+  in the test split. **This has methodology implications** — document how
+  this project adapts MVTec AD's original anomaly-detection framing into the
+  supervised classification setup used here (likely requires re-splitting
+  test-set defective images into train/val/test rather than using the
+  original AD splits directly).
 - **Known limitations:** TODO
 
 ## Label Quality Notes
