@@ -1,10 +1,17 @@
 # Phase 1 dataset: Casting Product Image Dataset (binary defect classification)
 # Used to validate the end-to-end pipeline before scaling to MVTec AD.
+#
+# NOTE: The Kaggle archive contains TWO copies of this dataset:
+#   - casting_512x512/casting_512x512/{def_front,ok_front}  <- flat, unsplit (USED HERE)
+#   - casting_data/casting_data/{train,test}/{def_front,ok_front}  <- pre-split by author (NOT used)
+# We use the flat, unsplit copy so our own stratified_split() controls the
+# train/val/test partitioning reproducibly via a fixed seed, rather than
+# inheriting the author's pre-made split.
 
 dataset:
   name: "casting"
   task: "binary_classification"     # defective vs. ok
-  raw_dir: "data/raw/casting"
+  raw_dir: "data/raw/casting/casting_512x512/casting_512x512"
   processed_dir: "data/processed/casting"
   image_size: [224, 224]
   channels: 1                        # grayscale casting images
