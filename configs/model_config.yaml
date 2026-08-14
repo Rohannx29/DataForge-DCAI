@@ -11,14 +11,17 @@ model:
   dropout: 0.3
 
 training:
-  epochs: 30
+  epochs: 20                          # reduced from 30 — CPU training confirmed; early stopping will
+                                        # likely trigger sooner anyway given dataset size (909 train images)
   batch_size: 32
   optimizer: "adamw"
   learning_rate: 0.0003
   weight_decay: 0.0001
   lr_scheduler: "cosine"
   early_stopping_patience: 5
-  mixed_precision: true               # torch.cuda.amp — helps on consumer GPUs
+  mixed_precision: true               # NOTE: has no effect yet — train.py doesn't currently implement
+                                        # AMP (torch.cuda.amp), and it wouldn't help on CPU regardless.
+                                        # Flag reserved for when this project runs on GPU (Phase 2 / Colab).
 
 evaluation:
   metrics:
