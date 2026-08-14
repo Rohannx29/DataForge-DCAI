@@ -2,8 +2,12 @@
 """
 Entry point: evaluate a trained model on the held-out test set.
 
+This is the script that produces the TRUE generalization estimate — the
+model's test-set performance is never used for early stopping or model
+selection, unlike the validation metrics logged during training.
+
 Usage:
-    python scripts/evaluate.py --manifest data/processed/casting/manifest_baseline.csv --checkpoint path/to/model.pt
+    python scripts/evaluate.py --manifest data/processed/casting/manifest_baseline.csv --checkpoint experiments/checkpoints/baseline_model.pt
 """
 import argparse
 import sys
@@ -18,7 +22,7 @@ from torchvision import transforms
 from src.data.dataset import DefectDataset
 from src.models.architectures import build_model
 from src.models.evaluate import evaluate_model
-from src.utils.config import load_config
+from src.utils.config import load_config, merge_configs
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,9 +33,12 @@ def main() -> None:
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--checkpoint", required=True, help="Path to a saved model state_dict (.pt)")
     parser.add_argument("--model-config", default="configs/model_config.yaml")
+    parser.add_argument("--base-config", default="configs/base_config.yaml")
     args = parser.parse_args()
 
-    config = load_config(args.model_config)
+    base_cfg = load_config(args.base_config)
+    model_cfg = load_config(args.model_config)
+    config = merge_configs(base_cfg, model_cfg)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -50,7 +57,7 @@ def main() -> None:
     model.load_state_dict(torch.load(args.checkpoint, map_location="cpu"))
 
     metrics = evaluate_model(model, test_loader, device=config["project"]["device"])
-    logger.info("Test set metrics: %s", metrics)
+    logger.info("TEST SET metrics (true generalization estimate) [%s]: %s", args.checkpoint, metrics)
 
 
 if __name__ == "__main__":
