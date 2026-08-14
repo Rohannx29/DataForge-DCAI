@@ -9,13 +9,25 @@ of the "noise_corrected" experimental condition.
 Reference: Northcutt, Jiang, Chuang (2021) "Confident Learning: Estimating
 Uncertainty in Dataset Labels", JAIR.
 """
+import tempfile
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from cleanlab.filter import find_label_issues
+from sklearn.model_selection import StratifiedKFold
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_IMAGENET_TRANSFORM = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
 
 def detect_label_issues(
@@ -34,8 +46,8 @@ def detect_label_issues(
             Options: "self_confidence", "normalized_margin", "confidence_weighted_entropy".
 
     Returns:
-        Array of sample indices flagged as likely mislabeled, ranked by
-        estimated severity (most likely issue first).
+        Array of sample indices (positional, into the arrays passed in) flagged
+        as likely mislabeled, ranked by estimated severity (most likely issue first).
     """
     issue_indices = find_label_issues(
         labels=labels,
@@ -49,27 +61,94 @@ def detect_label_issues(
     return issue_indices
 
 
-def get_out_of_sample_predictions(model_fn, manifest: pd.DataFrame, n_folds: int = 5) -> np.ndarray:
+def get_out_of_sample_predictions(
+    manifest: pd.DataFrame,
+    model_config: dict,
+    n_folds: int = 5,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray]:
     """Compute out-of-sample predicted probabilities via k-fold cross-validation.
 
-    Required input for detect_label_issues() — using probabilities from a
-    model trained on the same data it predicts would bias noise detection
-    toward finding fewer issues than actually exist.
+    Runs ONLY over the manifest's 'train' split rows — val/test are held out
+    of this process entirely, since they must remain trustworthy ground truth
+    for evaluation, not subject to noise correction.
+
+    NOTE ON COST: this trains n_folds separate models from scratch (same
+    architecture/hyperparameters as the main training config), so it costs
+    roughly n_folds x a normal training run. On the Casting dataset with a
+    GPU, expect several minutes total, not seconds.
 
     Args:
-        model_fn: Callable that returns a fresh, untrained model instance
-            compatible with the training pipeline in src/models/train.py.
-        manifest: Training manifest with 'image_path' and 'label' columns.
+        manifest: Full manifest DataFrame with 'image_path', 'label', 'split' columns.
+        model_config: Merged config dict (base_config + model_config) — reuses
+            the SAME architecture/hyperparameters as the main training pipeline,
+            per the project's controlled-experiment principle.
         n_folds: Number of cross-validation folds.
+        seed: Random seed for fold splitting and model init.
 
     Returns:
-        Array of shape (n_samples, n_classes) with out-of-sample predicted probabilities.
+        Tuple of (original_indices, pred_probs):
+            original_indices: positional indices into the train-split subset
+                of `manifest` (i.e. index into manifest[manifest.split=='train']
+                .reset_index(drop=True)), in the SAME order as pred_probs.
+            pred_probs: array of shape (n_train_samples, n_classes) with
+                out-of-sample predicted probabilities.
     """
-    # TODO: implement k-fold training loop using src.models.train.train_model,
-    # collecting held-out predictions for each fold's validation split.
-    raise NotImplementedError(
-        "Implement k-fold OOS prediction collection once src/models/train.py baseline is complete."
-    )
+    from src.models.architectures import build_model
+    from src.models.evaluate import get_predicted_probabilities
+    from src.models.train import train_model
+    from src.data.dataset import DefectDataset
+
+    train_rows = manifest[manifest["split"] == "train"].reset_index(drop=True)
+    labels = train_rows["label"].values
+
+    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    oos_pred_probs = np.zeros((len(train_rows), model_config["model"]["num_classes"]))
+
+    for fold_idx, (fold_train_idx, fold_holdout_idx) in enumerate(skf.split(train_rows, labels)):
+        logger.info("OOS prediction fold %d/%d (holdout size=%d)", fold_idx + 1, n_folds, len(fold_holdout_idx))
+
+        fold_train_df = train_rows.iloc[fold_train_idx].assign(split="train")
+        fold_holdout_df = train_rows.iloc[fold_holdout_idx].assign(split="val")
+        fold_manifest = pd.concat([fold_train_df, fold_holdout_df]).reset_index(drop=True)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as tmp:
+            fold_manifest.to_csv(tmp.name, index=False)
+            tmp_path = tmp.name
+
+        try:
+            fold_train_dataset = DefectDataset(tmp_path, split="train", transform=_IMAGENET_TRANSFORM)
+            fold_holdout_dataset = DefectDataset(tmp_path, split="val", transform=_IMAGENET_TRANSFORM)
+
+            fold_train_loader = DataLoader(fold_train_dataset, batch_size=model_config["training"]["batch_size"], shuffle=True)
+            fold_holdout_loader = DataLoader(fold_holdout_dataset, batch_size=model_config["training"]["batch_size"], shuffle=False)
+
+            model = build_model(
+                architecture=model_config["model"]["architecture"],
+                num_classes=model_config["model"]["num_classes"],
+                pretrained=model_config["model"]["pretrained"],
+                freeze_backbone=model_config["model"]["freeze_backbone"],
+                dropout=model_config["model"]["dropout"],
+            )
+
+            model, _ = train_model(
+                model=model,
+                train_loader=fold_train_loader,
+                val_loader=fold_holdout_loader,
+                epochs=model_config["training"]["epochs"],
+                learning_rate=model_config["training"]["learning_rate"],
+                weight_decay=model_config["training"]["weight_decay"],
+                device=model_config["project"]["device"],
+                early_stopping_patience=model_config["training"]["early_stopping_patience"],
+            )
+
+            fold_probs = get_predicted_probabilities(model, fold_holdout_loader, device=model_config["project"]["device"])
+            oos_pred_probs[fold_holdout_idx] = fold_probs
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    original_indices = np.arange(len(train_rows))
+    return original_indices, oos_pred_probs
 
 
 def inject_synthetic_label_noise(
@@ -77,26 +156,32 @@ def inject_synthetic_label_noise(
     noise_fraction: float,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Deliberately corrupt a fraction of labels to test noise-detection recall/precision.
+    """Deliberately corrupt a fraction of TRAIN-split labels to test noise-detection recall/precision.
 
-    Used to validate that detect_label_issues() actually finds injected errors
-    before trusting it on real (unknown ground-truth) label noise.
+    Only touches 'train' split rows — val/test remain untouched so evaluation
+    stays trustworthy. Used to validate that detect_label_issues() actually
+    finds injected errors before trusting it on real (unknown ground-truth)
+    label noise.
 
     Args:
-        manifest: Original manifest with a 'label' column.
-        noise_fraction: Fraction of samples to relabel with a random wrong class.
+        manifest: Original manifest with 'label' and 'split' columns.
+        noise_fraction: Fraction of TRAIN samples to relabel with a random wrong class.
         seed: Random seed for reproducibility.
 
     Returns:
-        Manifest with a 'label' column corrupted and an added 'is_synthetically_noisy'
-        boolean column for later evaluation of detection performance.
+        Manifest with train-split labels corrupted and an added
+        'is_synthetically_noisy' boolean column for later evaluation of
+        detection performance.
     """
     rng = np.random.RandomState(seed)
     manifest = manifest.copy()
     manifest["is_synthetically_noisy"] = False
 
-    n_noisy = int(len(manifest) * noise_fraction)
-    noisy_idx = rng.choice(manifest.index, size=n_noisy, replace=False)
+    train_mask = manifest["split"] == "train"
+    train_indices = manifest[train_mask].index
+
+    n_noisy = int(len(train_indices) * noise_fraction)
+    noisy_idx = rng.choice(train_indices, size=n_noisy, replace=False)
     classes = manifest["label"].unique()
 
     for idx in noisy_idx:
@@ -105,5 +190,5 @@ def inject_synthetic_label_noise(
         manifest.at[idx, "label"] = rng.choice(wrong_choices)
         manifest.at[idx, "is_synthetically_noisy"] = True
 
-    logger.info("Injected synthetic noise into %d / %d samples", n_noisy, len(manifest))
+    logger.info("Injected synthetic noise into %d / %d train samples", n_noisy, len(train_indices))
     return manifest
