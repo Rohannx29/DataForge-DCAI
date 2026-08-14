@@ -54,43 +54,65 @@
 ## Label Quality Notes
 
 ### Synthetic Noise Detection Validation
-[unchanged from before — precision=0.899, recall=0.889]
+
+Since Casting's real labels appear near-perfectly clean (consistent with the
+ceiling-effect baseline result above), there is no meaningful REAL label
+noise to detect on this dataset. The noise-detection pipeline (`cleanlab`-based
+confident learning, `src/labels/noise_detection.py`) was instead validated
+using **synthetic label noise** injected at a known rate:
+
+- **Method:** 10% of training labels (90 / 909) deliberately corrupted;
+  5-fold cross-validation used to obtain out-of-sample predicted
+  probabilities; `cleanlab.filter.find_label_issues()` used to flag
+  likely-noisy samples.
+- **Result:** 89 samples flagged. TP=80, FP=9, FN=10. Precision=0.899,
+  Recall=0.889.
+- **Interpretation:** The detector correctly identifies ~89% of deliberately
+  injected label errors with ~90% precision — the noise-detection machinery
+  is correctly wired and functioning ahead of Phase 2 (MVTec AD).
 
 ### Real Label Correction — Effect on Downstream Performance
 
-Applying `cleanlab`-based noise correction to Casting's real (non-synthetic)
-labels removed <N> training samples (<X.XX>% of the 909-sample training set)
-flagged as likely mislabeled. Downstream 5-run comparison against the
-uncorrected baseline:
+Applying `cleanlab`-based correction to Casting's REAL (non-synthetic)
+labels flagged and removed **1 training sample out of 909 (0.11%)** —
+consistent with the dataset's near-ceiling baseline performance, indicating
+almost no genuine label noise is present.
 
-| Condition | Test F1 (mean ± std) | 95% CI |
+5-run comparison (test F1, mean ± std, 95% CI):
+
+| Condition | Test F1 | 95% CI |
 |---|---|---|
 | baseline | 0.9974 ± 0.0023 | [0.9946, 1.0003] |
-| cleaned | 0.9974 ± 0.0023 | [0.9946, 1.0003] |
 | noise_corrected | 0.9923 ± 0.0019 | [0.9899, 0.9947] |
 
-An independent-samples t-test (baseline vs. noise_corrected, n=5 each)
-confirms this difference is statistically significant: t=3.803, p=0.0052.
+Independent-samples t-test: t=3.803, **p=0.0052** (statistically significant
+at α=0.05).
 
-**Interpretation:** Noise correction produced a statistically significant
-*decrease* in test performance on this dataset. Since baseline already
-achieves near-ceiling performance (0.997 test F1), Casting's real labels
-contain very little genuine noise for `cleanlab` to correctly identify.
-Under these conditions, the detector's false positives (correctly-labeled
-samples incorrectly flagged and removed — measured at 9/89, ~10% FP rate,
-in the synthetic noise validation above) dominate its impact: removing valid
-training data shrinks an already-small training set (909 samples) with no
-compensating noise-reduction benefit. This demonstrates that label-noise
-correction is not universally beneficial — its value is contingent on the
-actual noise rate present in the source data, motivating close attention to
-this dynamic when the same pipeline is applied to MVTec AD in Phase 2, where
-the true noise rate is unknown and may differ substantially.
+**Interpretation — read carefully, this is a methodological caution, not a
+capability claim:** despite reaching statistical significance across 5 seeds,
+this result should NOT be read as "noise correction hurt the model." Only
+0.11% of training data was removed — far too little to plausibly cause a
+real capability difference in a fine-tuned ResNet18. The measured Δ (0.0051
+F1) corresponds to roughly **one additional misclassified image, on average,
+out of 196 test images** — i.e., the entire "effect" is within the coarsest
+unit the metric can resolve. Two compounding factors explain the significant-
+but-spurious result:
 
-**baseline vs. cleaned are bit-identical** (mean, std, CI all match exactly)
-— expected, not a bug: `manifest_cleaned.csv` is byte-identical to
-`manifest_baseline.csv` for this dataset (0 corrupt files, 0 duplicates
-found within the correctly-scoped raw directory — see Data quality findings
-above), and both conditions share the same seed sequence with deterministic
-cuDNN settings enabled (`src/utils/seed.py`), producing bit-reproducible
-results. This will not hold for MVTec AD, where cleaning is expected to
-meaningfully alter the dataset.
+1. **Metric quantization:** with only 196 test samples, F1 near ceiling can
+   only take a small number of discrete values; a difference of "1 image on
+   average" is close to the smallest measurable unit, so t-tests on such
+   metrics are unusually sensitive to noise even when seeds are fixed.
+2. **Training-loader stochasticity:** `DataLoader(shuffle=True)` generates a
+   shuffle permutation dependent on the CURRENT dataset length. Removing 1
+   sample (909→908) changes the shuffle/batch composition for the entire
+   training run, producing a genuinely different training trajectory from
+   the same seed — not "identical training minus one example."
+
+**Practical conclusion:** on near-ceiling tasks with small test sets,
+statistically-significant results from n=5 seeded runs can arise from
+training/data-loader stochasticity rather than a real, causally meaningful
+effect of the data intervention being tested. This motivates two things
+going forward: (a) treating significance tests on Casting as inconclusive
+by design, given the ceiling effect, and (b) expecting more trustworthy,
+larger-effect-size comparisons on MVTec AD (Phase 2), where categories are
+not expected to be at ceiling and test sets may allow finer metric resolution.
