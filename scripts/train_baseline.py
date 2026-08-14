@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
@@ -40,6 +41,7 @@ def main() -> None:
     parser.add_argument("--condition", required=True, choices=["baseline", "cleaned", "noise_corrected", "dcai_improved"])
     parser.add_argument("--model-config", default="configs/model_config.yaml")
     parser.add_argument("--base-config", default="configs/base_config.yaml")
+    parser.add_argument("--checkpoint-dir", default="experiments/checkpoints", help="Where to save the trained model weights")
     args = parser.parse_args()
 
     base_cfg = load_config(args.base_config)
@@ -88,9 +90,25 @@ def main() -> None:
             early_stopping_patience=config["training"]["early_stopping_patience"],
         )
 
-        final_metrics = evaluate_model(model, val_loader, device=config["project"]["device"])
-        log_metrics(final_metrics)
-        logger.info("Final validation metrics [%s]: %s", args.condition, final_metrics)
+        # NOTE: this metric is computed on the VALIDATION set — the same set
+        # used to select the best epoch via early stopping. It is a model
+        # SELECTION metric, not a fair estimate of generalization. Always
+        # report the TEST set result (via scripts/evaluate.py) as the number
+        # that goes in the final report — never this one.
+        val_metrics = evaluate_model(model, val_loader, device=config["project"]["device"])
+        log_metrics({f"val_{k}": v for k, v in val_metrics.items()})
+        logger.info("Validation metrics (SELECTION metric, not generalization estimate) [%s]: %s", args.condition, val_metrics)
+
+        checkpoint_dir = Path(args.checkpoint_dir)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = checkpoint_dir / f"{args.condition}_model.pt"
+        torch.save(model.state_dict(), checkpoint_path)
+        logger.info("Model checkpoint saved to %s", checkpoint_path)
+        logger.info(
+            "Next: run `python scripts/evaluate.py --manifest %s --checkpoint %s` "
+            "to get the TRUE held-out test set performance.",
+            args.manifest, checkpoint_path,
+        )
 
 
 if __name__ == "__main__":
