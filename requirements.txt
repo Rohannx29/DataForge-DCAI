@@ -1,4 +1,11 @@
 # --- Core ML / DL ---
+# NOTE: torch/torchvision below install CPU-only if pulled from default PyPI.
+# For GPU (CUDA) support, install these two SEPARATELY first, before running
+# `pip install -r requirements.txt`, using the correct index for your CUDA
+# driver version (see docs/setup.md "GPU Setup" section):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# pip will then see torch/torchvision already satisfied and skip reinstalling
+# the CPU version when processing this file.
 torch>=2.2.0
 torchvision>=0.17.0
 timm>=0.9.16              # pretrained backbones (ResNet18, EfficientNet-B0)
